@@ -1,0 +1,42 @@
+services:
+  presidio-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: estonian-presidio-api
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=production
+      - LOG_LEVEL=info
+      - HOST=0.0.0.0
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./config:/app/config:ro
+      - models_cache:/app/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    networks:
+      - presidio-network
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+volumes:
+  models_cache:
+  spacy_models:
+
+networks:
+  presidio-network:
+    driver: bridge
