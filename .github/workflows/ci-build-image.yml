@@ -33,7 +33,7 @@ jobs:
            echo "$GITHUB_ENV"
       - name: Docker Build
         run: | 
-           cd GUI
+           
            docker image build --tag $DOCKER_TAG_CUSTOM .
 
       - name: Log in to GitHub container registry
