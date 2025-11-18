@@ -3,7 +3,7 @@
 # for faster builds. This file serves as documentation and for local development.
 
 # Deep Learning Framework
-torch==2.1.0
+torch==2.8.0
 
 # NLP Libraries
 spacy==3.7.2
