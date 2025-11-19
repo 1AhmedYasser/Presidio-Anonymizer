@@ -207,19 +207,23 @@ class EstonianPresidioFlaskServer:
         })
         
         # Anonymization request model
-        self.anonymize_request_model = self.api.model('AnonymizeRequest', {
-            'text': fields.String(
-                required=True, 
-                description='Text to analyze and anonymize',
-                example='Kontakt Jaan Tamm email jaan@example.com või telefon +372 5555 5555'
-            ),
-            'language': fields.String(
-                default='xx', 
-                description='Language code',
-                example='xx'
-            ),
-            'anonymizers': fields.Raw(
-                description='''Custom anonymization operators per entity type or DEFAULT for all entities.
+        self.anonymize_request_model = self.api.model(
+            "AnonymizeRequest",
+            {
+                "texts": fields.List(
+                    fields.String,
+                    required=True,
+                    description="Array of strings to analyze and anonymize",
+                    example=[
+                        "Kontakt Jaan Tamm email jaan@example.com või telefon +372 5555 5555",
+                        "Mari Mets elab Tallinnas",
+                    ],
+                ),
+                "language": fields.String(
+                    default="xx", description="Language code", example="xx"
+                ),
+                "anonymizers": fields.Raw(
+                    description="""Custom anonymization operators per entity type or DEFAULT for all entities.
                 
 Available operators:
 - replace: {"type": "replace", "new_value": "[REDACTED]"}
@@ -230,29 +234,35 @@ Available operators:
 - keep: {"type": "keep"} - no anonymization
 
 Use "DEFAULT" to apply operator to all entities, or specify per entity type.
-Entity-specific operators override DEFAULT.''',
-                example={
-                    "DEFAULT": {"type": "replace", "new_value": "[REDACTED]"},
-                    "EMAIL_ADDRESS": {"type": "replace", "new_value": "[EMAIL]"},
-                    "PHONE_NUMBER": {"type": "mask", "masking_char": "X", "chars_to_mask": 4, "from_end": True}
-                }
-            ),
-            'entities': fields.List(
-                fields.String, 
-                description='Specific entity types to anonymize (if not provided, uses all configured)',
-                example=['PERSON', 'EMAIL_ADDRESS', 'PHONE_NUMBER']
-            ),
-            'allowlist': fields.List(
-                fields.String, 
-                description='Words/phrases to exclude from anonymization (case-insensitive)',
-                example=['Microsoft', 'Tallinn']
-            ),
-            'denylist': fields.List(
-                fields.String, 
-                description='Words/phrases to force anonymization as DENYLIST_MATCH (case-insensitive)',
-                example=['Project Phoenix', 'confidential']
-            )
-        })
+Entity-specific operators override DEFAULT.""",
+                    example={
+                        "DEFAULT": {"type": "replace", "new_value": "[REDACTED]"},
+                        "EMAIL_ADDRESS": {"type": "replace", "new_value": "[EMAIL]"},
+                        "PHONE_NUMBER": {
+                            "type": "mask",
+                            "masking_char": "X",
+                            "chars_to_mask": 4,
+                            "from_end": True,
+                        },
+                    },
+                ),
+                "entities": fields.List(
+                    fields.String,
+                    description="Specific entity types to anonymize (if not provided, uses all configured)",
+                    example=["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER"],
+                ),
+                "allowlist": fields.List(
+                    fields.String,
+                    description="Words/phrases to exclude from anonymization (case-insensitive)",
+                    example=["Microsoft", "Tallinn"],
+                ),
+                "denylist": fields.List(
+                    fields.String,
+                    description="Words/phrases to force anonymization as DENYLIST_MATCH (case-insensitive)",
+                    example=["Project Phoenix", "confidential"],
+                ),
+            },
+        )
         
         # Anonymization item model
         self.anonymization_item_model = self.api.model('AnonymizationItem', {
@@ -282,19 +292,32 @@ Entity-specific operators override DEFAULT.''',
                 example='replace'
             )
         })
+        self.single_anonymize_result_model = self.api.model(
+            "SingleAnonymizeResult",
+            {
+                "text": fields.String(
+                    required=True,
+                    description="Fully anonymized text with all PII replaced",
+                    example="Contact [PERSON] at [EMAIL] or call XXXX",
+                ),
+                "items": fields.List(
+                    fields.Nested(self.anonymization_item_model),
+                    description="List of all anonymization operations performed on this text",
+                ),
+            },
+        )
         
         # Anonymization response model
-        self.anonymize_response_model = self.api.model('AnonymizeResponse', {
-            'text': fields.String(
-                required=True, 
-                description='Fully anonymized text with all PII replaced',
-                example='Contact [PERSON] at [EMAIL] or call XXXX'
-            ),
-            'items': fields.List(
-                fields.Nested(self.anonymization_item_model), 
-                description='List of all anonymization operations performed'
-            )
-        })
+        self.anonymize_response_model = self.api.model(
+            "AnonymizeResponse",
+            {
+                "results": fields.List(
+                    fields.Nested(self.single_anonymize_result_model),
+                    required=True,
+                    description="Array of anonymization results, one for each input text",
+                )
+            },
+        )
         
         # Error model
         self.error_model = self.api.model('Error', {
@@ -360,7 +383,7 @@ Entity-specific operators override DEFAULT.''',
             @self.api.doc(
                 'anonymize_text',
                 description='''
-**Tuvasta ja anonümiseeri isikuandmed tekstis kasutades konfigureeritavaid operaatoreid.**
+**Tuvasta ja anonümiseeri isikuandmed tekstides kasutades konfigureeritavaid operaatoreid.**
 
 See endpoint teostab kaks toimingut:
 1. **Analüüs**: Tuvastab isikuandmed kasutades EstBERT + spaCy mudeleid (sama mis /analyze)
@@ -386,7 +409,10 @@ See endpoint teostab kaks toimingut:
 ```json
 // Lihtne asendamine kõigile entiteetidele
 {
-  "text": "Kontakt Jaan Tamm email jaan@example.com või telefon +372 5555 5555",
+  "texts": [
+    "Kontakt Jaan Tamm email jaan@example.com või telefon +372 5555 5555",
+    "Mari Mets elab Tallinnas aadressil Liivalaia 2"
+  ],
   "anonymizers": {
     "DEFAULT": {"type": "replace", "new_value": "[VARJATUD]"}
   }
@@ -394,53 +420,25 @@ See endpoint teostab kaks toimingut:
 
 // Räsi kõik, aga asenda e-mailid
 {
-  "text": "Töötaja Mari Mets (mari.mets@firma.ee) isikukood 39012315678",
+  "texts": [
+    "Töötaja Mari Mets (mari.mets@firma.ee) isikukood 39012315678",
+    "Kontakt Peeter Kukk aadressil peeter@mail.ee"
+  ],
   "anonymizers": {
     "DEFAULT": {"type": "hash", "hash_type": "sha256"},
     "EMAIL_ADDRESS": {"type": "replace", "new_value": "[EMAIL]"}
   }
 }
 
-// Varjata telefoninumbrid (viimased 4 numbrit nähtavad)
-{
-  "text": "Helista Kalle Kallasele telefonil +372 5123 4567",
-  "anonymizers": {
-    "PHONE_NUMBER": {
-      "type": "mask",
-      "masking_char": "X",
-      "chars_to_mask": 8,
-      "from_end": false
-    }
-  }
-}
-
-// Krüpteerimine pööratavas vormis
-{
-  "text": "Töötaja isikukood on 38906123456",
-  "anonymizers": {
-    "EE_PERSONAL_CODE": {
-      "type": "encrypt",
-      "key": "WmZq4t7w!z%C&F)J"
-    }
-  }
-}
-
-// Entiteedi-spetsiifilised operaatorid
-{
-  "text": "Peeter Kukk (peeter@mail.ee, tel +372 5555 1234) elab Tallinnas",
-  "anonymizers": {
-    "PERSON": {"type": "replace", "new_value": "[NIMI]"},
-    "EMAIL_ADDRESS": {"type": "hash", "hash_type": "sha256"},
-    "PHONE_NUMBER": {"type": "mask", "masking_char": "*", "chars_to_mask": 4},
-    "LOCATION": {"type": "keep"}
-  }
-}
 
 // Lubatud sõnade ja keelatud sõnade kasutamine
 {
-  "text": "Microsoft töötaja Jaan Tamm projektis Phoenix saadab maili aadressil jaan@microsoft.com",
-  "allowlist": ["Microsoft", "Tallinn"],  // Ei anonümiseerita neid sõnu
-  "denylist": ["Phoenix"],  // Anonümiseeritakse alati kui DENYLIST_MATCH
+  "texts": [
+    "Microsoft töötaja Jaan Tamm projektis Phoenix saadab maili aadressil jaan@microsoft.com",
+    "Tallinna kontoris töötab Mari Mets projektis Phoenix"
+  ],
+  "allowlist": ["Microsoft", "Tallinn"],
+  "denylist": ["Phoenix"],
   "anonymizers": {
     "DEFAULT": {"type": "replace", "new_value": "[PII]"},
     "PERSON": {"type": "replace", "new_value": "[ISIK]"}
@@ -450,7 +448,7 @@ See endpoint teostab kaks toimingut:
 
 **Sisendparameetrid:**
 
-- **text** (nõutud): Tekst, mida analüüsida ja anonümiseerida
+- **texts** (nõutud): Tekstid, mida analüüsida ja anonümiseerida
 - **language** (valikuline, vaikimisi "xx"): Keele kood
 - **anonymizers** (valikuline): Anonümiseerimise operaatorid entiteedi tüüpide kaupa või DEFAULT kõigile
 - **entities** (valikuline): Konkreetsed entiteedi tüübid, mida anonümiseerida (kui puudub, kasutatakse kõiki konfigureeritud)
@@ -464,6 +462,26 @@ API kasutab EstNLTK Vabamorf teeki, et genereerida automaatselt kõik käändeli
 - "Tallinn" → "Tallinna", "Tallinnas", "Tallinnast", jne
 
 Tänu sellele ei pea kasutaja ise kõiki vorme sisestama - piisab põhivormist.
+
+**Väljund:**
+
+Endpoint tagastab `results` massiivi, kus iga element vastab ühele sisendtekstile:
+```json
+{
+  "results": [
+    {
+      "text": "Kontakt [PERSON] email [EMAIL] või telefon XXXX",
+      "items": [
+        {"start": 8, "end": 16, "entity_type": "PERSON", "text": "[PERSON]", "operator": "replace"},
+        {"start": 23, "end": 30, "entity_type": "EMAIL_ADDRESS", "text": "[EMAIL]", "operator": "replace"}
+      ]
+    },
+    {
+      "text": "[PERSON] elab [LOCATION] aadressil Liivalaia 2",
+      "items": [...]
+    }
+  ]
+}
 ```
 
 
@@ -486,10 +504,18 @@ Tänu sellele ei pea kasutaja ise kõiki vorme sisestama - piisab põhivormist.
                     data = request.get_json()
                     
                     # Validate required fields
-                    if "text" not in data:
-                        server_instance.api.abort(400, "Missing required field: text")
+                    if "texts" not in data:
+                        server_instance.api.abort(400, "Missing required field: texts")
+
+                    texts = data["texts"]
                     
-                    text = data["text"]
+                    if not isinstance(texts, list):
+                        server_instance.api.abort(400, "Field 'texts' must be an array")
+                    
+                    if len(texts) == 0:
+                        server_instance.api.abort(400, "Field 'texts' cannot be empty")
+                    
+                    
                     language = data.get("language", "xx")
                     anonymizers = data.get("anonymizers")
                     entities = data.get("entities")
@@ -504,16 +530,7 @@ Tänu sellele ei pea kasutaja ise kõiki vorme sisestama - piisab põhivormist.
                         "EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS", "GPE"
                     ])
                     
-                    # Analyze text with allowlist/denylist support
-                    analyzer_results = analyze_with_lists(
-                        analyzer=server_instance.analyzer,
-                        text=text,
-                        entities=entities_to_detect,
-                        language=language,
-                        allowlist=allowlist if allowlist else None,
-                        denylist=denylist if denylist else None
-                    )
-                    
+        
                     # Setup anonymization operators
                     operators = {}
                     if anonymizers:
@@ -545,27 +562,50 @@ Tänu sellele ei pea kasutaja ise kõiki vorme sisestama - piisab põhivormist.
                             operators["DENYLIST_MATCH"] = OperatorConfig("replace", {"new_value": "[PII]"})
                     
                     # Anonymize the text
-                    anonymized_result = server_instance.anonymizer.anonymize(
-                        text=text,
-                        analyzer_results=analyzer_results,
-                        operators=operators
-                    )
-                    
-                    # Convert items to JSON format
-                    items_json = []
-                    for item in anonymized_result.items:
-                        items_json.append({
-                            "start": item.start,
-                            "end": item.end,
-                            "entity_type": item.entity_type,
-                            "text": item.text,
-                            "operator": item.operator
-                        })
-                    
-                    return {
-                        "text": anonymized_result.text,
-                        "items": items_json
-                    }, 200
+                    results_array = []
+
+                    for idx, text in enumerate(texts):
+                        logger.info(f"Processing text {idx + 1}/{len(texts)}")
+
+                        # Analyze text with allowlist/denylist support
+                        analyzer_results = analyze_with_lists(
+                            analyzer=server_instance.analyzer,
+                            text=text,
+                            entities=entities_to_detect,
+                            language=language,
+                            allowlist=allowlist if allowlist else None,
+                            denylist=denylist if denylist else None,
+                        )
+
+                        # Anonymize the text
+                        anonymized_result = server_instance.anonymizer.anonymize(
+                            text=text,
+                            analyzer_results=analyzer_results,
+                            operators=operators,
+                        )
+
+                        # Convert items to JSON format
+                        items_json = []
+                        for item in anonymized_result.items:
+                            items_json.append(
+                                {
+                                    "start": item.start,
+                                    "end": item.end,
+                                    "entity_type": item.entity_type,
+                                    "text": item.text,
+                                    "operator": item.operator,
+                                }
+                            )
+
+                        # Add this text's result to the array
+                        results_array.append(
+                            {"text": anonymized_result.text, "items": items_json}
+                        )
+
+                    logger.info(f"Successfully processed {len(results_array)} texts")
+
+                    return {"results": results_array}, 200
+
                     
                 except Exception as e:
                     error_msg = f"Anonymization failed: {str(e)}"
