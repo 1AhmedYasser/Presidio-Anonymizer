@@ -677,11 +677,16 @@ Returns all supported PII entity types including:
                 try:
                     language = request.args.get("language", "xx")
                     entities_list = server_instance.analyzer.get_supported_entities(language)
-                    
+                    configured_entities = server_instance.config.get(
+                        "entities_to_detect", []
+                    )
+                    filtered_entities = [
+                        e for e in entities_list if e in configured_entities
+                    ]
                     return {
-                        "entities": entities_list,
+                        "entities": filtered_entities,
                         "language": language,
-                        "count": len(entities_list)
+                        "count": len(filtered_entities),
                     }, 200
                     
                 except Exception as e:
