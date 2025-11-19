@@ -212,6 +212,13 @@ def load_presidio_from_config(config_path: str):
         default_score_threshold=config.get('default_score_threshold', 0.8)
     )
     logger.info("✓ AnalyzerEngine created")
+    unwanted_recognizers = ["MedicalLicenseRecognizer"]
+    for recognizer_name in unwanted_recognizers:
+        try:
+            analyzer.registry.remove_recognizer(recognizer_name)
+            logger.info(f"  Removed unwanted recognizer: {recognizer_name}")
+        except Exception as e:
+            logger.debug(f"  Could not remove {recognizer_name}: {e}")
     
     # Add recognizers for EACH supported language
     for lang in supported_languages:
