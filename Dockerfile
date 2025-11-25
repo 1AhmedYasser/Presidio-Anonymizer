@@ -39,11 +39,16 @@ RUN pip install --only-binary=:all: \
 RUN pip install --only-binary=:all: \
     transformers==4.35.0 \
     flask==3.0.0 \
-    flask-cors==4.0.0 \
+    flask-cors==6.0.0 \
     flask-restx==1.3.0 \
     presidio-analyzer==2.2.354 \
     presidio-anonymizer==2.2.354 \
-    pyyaml==6.0.1
+    pyyaml==6.0.1 \
+    urllib3==2.5.0 \
+    requests==2.32.4 \
+    setuptools==78.1.1 \
+    werkzeug==3.0.3 \
+    zipp==3.19.1
 
 # 4. Install estnltk (may need compilation but it's small)
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
