@@ -13,7 +13,7 @@ cymem==2.0.8
 murmurhash==1.0.10
 preshed==3.0.9
 pathy==0.11.0
-transformers==4.35.0
+transformers==4.36.0
 
 # Web Framework
 flask==3.0.0
@@ -37,3 +37,8 @@ zipp==3.19.1
 requests==2.32.4
 werkzeug==3.0.3
 urllib3==2.5.0
+
+# onnx runtime
+optimum[onnx]==2.0.0
+onnxruntime==1.19.2 
+torch==2.4.0

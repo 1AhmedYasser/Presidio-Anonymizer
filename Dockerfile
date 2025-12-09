@@ -37,7 +37,7 @@ RUN pip install --only-binary=:all: \
 
 # 3. Install remaining packages (all have binary wheels)
 RUN pip install --only-binary=:all: \
-    transformers==4.35.0 \
+    transformers==4.36.0 \
     flask==3.0.0 \
     flask-cors==6.0.0 \
     flask-restx==1.3.0 \
@@ -48,7 +48,10 @@ RUN pip install --only-binary=:all: \
     requests==2.32.4 \
     setuptools==78.1.1 \
     werkzeug==3.0.3 \
-    zipp==3.19.1
+    zipp==3.19.1 \
+    optimum[onnx]==2.0.0 \
+    onnxruntime==1.19.2 \
+    torch==2.4.0  # Reinstall to ensure compatibility
 
 # 4. Install estnltk (may need compilation but it's small)
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
