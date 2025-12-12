@@ -1,16 +1,18 @@
 import yaml
-from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+from optimum.onnxruntime import ORTModelForTokenClassification
+from transformers import AutoTokenizer, pipeline
 from presidio_analyzer import AnalyzerEngine, RecognizerResult, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngineProvider
 from presidio_analyzer.entity_recognizer import EntityRecognizer
 from typing import List, Optional
 import logging
+import os
 
 logger = logging.getLogger("presidio-flask-api")
 
 
-class EstBERTRecognizer(EntityRecognizer):
-    """Custom recognizer for tartuNLP/EstBERT_NER model"""
+class EstBERTRecognizerONNX(EntityRecognizer):
+    """Custom recognizer for tartuNLP/EstBERT_NER model with ONNX optimization"""
     
     ENTITIES = ["PERSON", "ORGANIZATION", "LOCATION", "DATE_TIME", "GPE"]
     
@@ -18,19 +20,38 @@ class EstBERTRecognizer(EntityRecognizer):
         super().__init__(
             supported_entities=self.ENTITIES,
             supported_language=supported_language,
-            name="EstBERT_NER_Recognizer"
+            name="EstBERT_NER_ONNX_Recognizer"
         )
         
-        logger.info(f"Loading EstBERT model: {model_name}")
+        logger.info(f"Loading EstBERT model with ONNX optimization: {model_name}")
         
         try:
+            # Load tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, max_length=512)
-            self.model = AutoModelForTokenClassification.from_pretrained(model_name)
+            
+            # Load ONNX model with optimized settings
+            self.model = ORTModelForTokenClassification.from_pretrained(
+                model_name,
+                export=True,  # Export to ONNX if not already
+                provider="CPUExecutionProvider",  # Use CPU
+            )
+            
+            # Configure ONNX session for multi-threading
+            if hasattr(self.model.model, 'get_session_options'):
+                session_options = self.model.model.get_session_options()
+                session_options.inter_op_num_threads = int(os.getenv('ONNX_INTER_OP_THREADS', '2'))
+                session_options.intra_op_num_threads = int(os.getenv('ONNX_INTRA_OP_THREADS', '2'))
+                session_options.execution_mode = 0  # ORT_SEQUENTIAL
+                logger.info(f"ONNX inter_op_threads: {session_options.inter_op_num_threads}")
+                logger.info(f"ONNX intra_op_threads: {session_options.intra_op_num_threads}")
+            
+            # Create pipeline with ONNX model
             self.nlp_pipeline = pipeline(
                 "ner",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                aggregation_strategy="simple"
+                aggregation_strategy="simple",
+                device=-1  # CPU
             )
             
             self.label_mapping = {
@@ -42,9 +63,10 @@ class EstBERTRecognizer(EntityRecognizer):
                 "TIME": "DATE_TIME"
             }
             
-            logger.info(f"✓ EstBERT recognizer initialized for language: {supported_language}")
+            logger.info(f"✓ EstBERT ONNX recognizer initialized for language: {supported_language}")
+            logger.info(f"  ONNX optimization enabled - improved threading performance")
         except Exception as e:
-            logger.error(f"✗ Failed to initialize EstBERT recognizer: {e}")
+            logger.error(f"✗ Failed to initialize EstBERT ONNX recognizer: {e}")
             raise
 
     def load(self) -> None:
@@ -52,13 +74,14 @@ class EstBERTRecognizer(EntityRecognizer):
         pass
 
     def analyze(self, text: str, entities: List[str], nlp_artifacts: NlpArtifacts = None) -> List[RecognizerResult]:
-        """Analyze text using EstBERT NER model"""
+        """Analyze text using EstBERT ONNX model"""
         results = []
         
         if not text or not text.strip():
             return results
         
         try:
+            # ONNX inference - releases GIL, allows true parallel execution
             ner_results = self.nlp_pipeline(text)
             
             for entity in ner_results:
@@ -75,7 +98,7 @@ class EstBERTRecognizer(EntityRecognizer):
                     results.append(result)
                     
         except Exception as e:
-            logger.error(f"Error in EstBERT analysis: {e}")
+            logger.error(f"Error in EstBERT ONNX analysis: {e}")
             
         return results
 
@@ -183,9 +206,9 @@ def create_pattern_recognizers(config: dict, language: str) -> List[PatternRecog
 
 
 def load_presidio_from_config(config_path: str):
-    """Load complete Presidio analyzer from YAML configuration"""
+    """Load complete Presidio analyzer from YAML configuration with ONNX"""
     logger.info("=" * 80)
-    logger.info("LOADING PRESIDIO ANALYZER")
+    logger.info("LOADING PRESIDIO ANALYZER WITH ONNX OPTIMIZATION")
     logger.info("=" * 80)
     
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -204,14 +227,16 @@ def load_presidio_from_config(config_path: str):
         logger.error(f"✗ NLP engine creation failed: {e}")
         raise
     
-    # Create analyzer WITHOUT registry (we'll add recognizers manually)
+    # Create analyzer
     logger.info("Creating AnalyzerEngine...")
     analyzer = AnalyzerEngine(
         nlp_engine=nlp_engine,
         supported_languages=supported_languages,
         default_score_threshold=config.get('default_score_threshold', 0.8)
     )
-    logger.info("✓ AnalyzerEngine created")
+    logger.info(" AnalyzerEngine created")
+    
+    # Remove unwanted recognizers
     unwanted_recognizers = ["MedicalLicenseRecognizer"]
     for recognizer_name in unwanted_recognizers:
         try:
@@ -220,22 +245,22 @@ def load_presidio_from_config(config_path: str):
         except Exception as e:
             logger.debug(f"  Could not remove {recognizer_name}: {e}")
     
-    # Add recognizers for EACH supported language
+    # Add recognizers for each supported language
     for lang in supported_languages:
         logger.info(f"\nAdding recognizers for language: {lang}")
         
-        # 1. Add EstBERT recognizer
+        # 1. Add EstBERT ONNX recognizer
         try:
             estbert_config = config.get('estbert_configuration', {})
             model_name = estbert_config.get('model_name', 'tartuNLP/EstBERT_NER')
-            estbert_recognizer = EstBERTRecognizer(
+            estbert_recognizer = EstBERTRecognizerONNX(
                 model_name=model_name,
                 supported_language=lang
             )
             analyzer.registry.add_recognizer(estbert_recognizer)
-            logger.info(f"  ✓ EstBERT recognizer added")
+            logger.info(f"  EstBERT ONNX recognizer added")
         except Exception as e:
-            logger.error(f"  ✗ EstBERT recognizer failed: {e}")
+            logger.error(f"  EstBERT ONNX recognizer failed: {e}")
         
         # 2. Add pattern recognizers
         try:
@@ -246,7 +271,7 @@ def load_presidio_from_config(config_path: str):
         except Exception as e:
             logger.error(f"  ✗ Pattern recognizers failed: {e}")
     
-    # Verify recognizers were added
+    # Verify
     logger.info("\n" + "=" * 80)
     logger.info("VERIFICATION")
     logger.info("=" * 80)
@@ -263,13 +288,13 @@ def load_presidio_from_config(config_path: str):
             logger.info(f"  Entities ({len(entities)}): {entities}")
             
             if len(recognizers) == 0:
-                logger.error(f"  ⚠️  WARNING: No recognizers for language {lang}!")
+                logger.error(f"  WARNING: No recognizers for language {lang}!")
                 
         except Exception as e:
             logger.error(f"  ✗ Error verifying {lang}: {e}")
     
     logger.info("\n" + "=" * 80)
-    logger.info("ANALYZER READY")
+    logger.info("ANALYZER READY WITH ONNX OPTIMIZATION")
     logger.info("=" * 80 + "\n")
     
     return analyzer
@@ -287,26 +312,17 @@ def analyze_with_lists(
 ) -> List[RecognizerResult]:
     """Analyze text with allowlist and denylist support"""
     
-    logger.info(f"analyze_with_lists:")
-    logger.info(f"  Text length: {len(text)}")
-    logger.info(f"  Language: {language}")
-    logger.info(f"  Entities: {entities}")
-    
-    # Check recognizers BEFORE analysis
+    # Check recognizers
     try:
         recognizers = analyzer.get_recognizers(language)
-        logger.info(f"  Available recognizers: {len(recognizers)}")
-        
         if len(recognizers) == 0:
-            error_msg = f"No recognizers registered for language '{language}'. This is a configuration error."
+            error_msg = f"No recognizers registered for language '{language}'"
             logger.error(error_msg)
             raise ValueError(error_msg)
-            
     except Exception as e:
-        logger.error(f"  Failed to get recognizers: {e}")
+        logger.error(f"Failed to get recognizers: {e}")
         raise
     
-    # Run analysis
     try:
         results = analyzer.analyze(
             text=text,
@@ -322,9 +338,7 @@ def analyze_with_lists(
     
     # Apply allowlist
     if allowlist:
-        original_count = len(results)
         results = apply_allowlist(results, text, allowlist)
-        logger.info(f"  After allowlist: {len(results)} entities")
     
     # Add denylist
     if denylist:
@@ -334,12 +348,9 @@ def analyze_with_lists(
             supported_language=language
         )
         denylist_results = denylist_recognizer.analyze(text, ["DENYLIST_MATCH"])
-        logger.info(f"  Denylist found: {len(denylist_results)} entities")
         results.extend(denylist_results)
     
     results.sort(key=lambda x: x.start)
-    logger.info(f"  Final: {len(results)} entities")
-    
     return results
 
 

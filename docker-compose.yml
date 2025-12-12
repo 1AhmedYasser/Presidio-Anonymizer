@@ -9,9 +9,17 @@ services:
     environment:
       - FLASK_ENV=production
       - LOG_LEVEL=info
-      - HOST=0.0.0.0
       - PORT=8000
       - PYTHONUNBUFFERED=1
+      
+      # ONNX Runtime threading configuration
+      # These control parallel execution within the ONNX model
+      - ONNX_INTER_OP_THREADS=2  # Number of parallel inferences (2-4 recommended)
+      - ONNX_INTRA_OP_THREADS=2  # Threads per inference operation
+      
+      # ThreadPoolExecutor configuration
+      - MAX_WORKERS=4  # Number of threads for parallel text processing
+      
     volumes:
       - ./config:/app/config:ro
       - models_cache:/app/models
@@ -28,14 +36,13 @@ services:
       resources:
         limits:
           memory: 4G
-          cpus: '2.0'
+          cpus: '4.0'
         reservations:
           memory: 2G
-          cpus: '1.0'
+          cpus: '2.0'
 
 volumes:
   models_cache:
-  spacy_models:
 
 networks:
   presidio-network:
