@@ -41,7 +41,7 @@ nlp_configuration:
 
 # EstBERT NER Model Configuration
 estbert_configuration:
-  model_name: "tartuNLP/EstBERT_NER_v2"
+  model_name: "buerokrattRIA/EstBert_NER_SyntheticGov"
   supported_language: xx
   entity_mapping:
     LOC: LOCATION
