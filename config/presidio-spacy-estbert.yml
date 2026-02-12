@@ -35,7 +35,7 @@ nlp_configuration:
       LOC: LOCATION
       LOCATION: LOCATION
       ORG: ORGANIZATION
-      GPE: LOCATION
+      GPE: GPE
       DATE: DATE_TIME
       TIME: DATE_TIME
 
