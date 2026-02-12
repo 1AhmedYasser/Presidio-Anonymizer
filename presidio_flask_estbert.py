@@ -25,25 +25,39 @@ class EstBERTRecognizerONNX(EntityRecognizer):
         
         logger.info(f"Loading EstBERT model with ONNX optimization: {model_name}")
         
+        # Log cache configuration
+        cache_dir = os.environ.get('TRANSFORMERS_CACHE', 'default')
+        logger.info(f"Using model cache directory: {cache_dir}")
+        
         try:
-            # Load tokenizer
+            # Load tokenizer - will use TRANSFORMERS_CACHE env var automatically
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, max_length=512)
             
+            # Configure ONNX session options
+            inter_threads = int(os.getenv('ONNX_INTER_OP_THREADS', '2'))
+            intra_threads = int(os.getenv('ONNX_INTRA_OP_THREADS', '2'))
+            
+            logger.info(f"ONNX config: inter_op_threads={inter_threads}, intra_op_threads={intra_threads}")
+            
             # Load ONNX model with optimized settings
+            # This will download to cache on first run, then reuse from volume
             self.model = ORTModelForTokenClassification.from_pretrained(
                 model_name,
                 export=True,  # Export to ONNX if not already
                 provider="CPUExecutionProvider",  # Use CPU
             )
             
-            # Configure ONNX session for multi-threading
-            if hasattr(self.model.model, 'get_session_options'):
-                session_options = self.model.model.get_session_options()
-                session_options.inter_op_num_threads = int(os.getenv('ONNX_INTER_OP_THREADS', '2'))
-                session_options.intra_op_num_threads = int(os.getenv('ONNX_INTRA_OP_THREADS', '2'))
-                session_options.execution_mode = 0  # ORT_SEQUENTIAL
-                logger.info(f"ONNX inter_op_threads: {session_options.inter_op_num_threads}")
-                logger.info(f"ONNX intra_op_threads: {session_options.intra_op_num_threads}")
+            # Configure session after loading (works with optimum 1.23+)
+            if hasattr(self.model, 'model') and hasattr(self.model.model, 'get_session_options'):
+                try:
+                    session_options = self.model.model.get_session_options()
+                    session_options.inter_op_num_threads = inter_threads
+                    session_options.intra_op_num_threads = intra_threads
+                    logger.info(f"✓ ONNX session configured with {inter_threads} inter-op and {intra_threads} intra-op threads")
+                except Exception as e:
+                    logger.warning(f"Could not configure session options: {e}")
+            
+            logger.info(f"✓ Model loaded with ONNX optimization")
             
             # Create pipeline with ONNX model
             self.nlp_pipeline = pipeline(
@@ -64,7 +78,8 @@ class EstBERTRecognizerONNX(EntityRecognizer):
             }
             
             logger.info(f"✓ EstBERT ONNX recognizer initialized for language: {supported_language}")
-            logger.info(f"  ONNX optimization enabled - improved threading performance")
+            logger.info(f"  Model: {model_name}")
+            logger.info(f"  ONNX optimization enabled")
         except Exception as e:
             logger.error(f"✗ Failed to initialize EstBERT ONNX recognizer: {e}")
             raise

@@ -11,18 +11,17 @@ services:
       - LOG_LEVEL=info
       - PORT=8000
       - PYTHONUNBUFFERED=1
-      
+      # Configure Hugging Face to use the volume
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
       # ONNX Runtime threading configuration
-      # These control parallel execution within the ONNX model
-      - ONNX_INTER_OP_THREADS=2  # Number of parallel inferences (2-4 recommended)
+      - ONNX_INTER_OP_THREADS=2  # Number of parallel inferences
       - ONNX_INTRA_OP_THREADS=2  # Threads per inference operation
-      
       # ThreadPoolExecutor configuration
       - MAX_WORKERS=4  # Number of threads for parallel text processing
-      
     volumes:
       - ./config:/app/config:ro
-      - models_cache:/app/models
+      - models_cache:/app/models  # This persists the downloaded models
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -43,6 +42,7 @@ services:
 
 volumes:
   models_cache:
+    driver: local
 
 networks:
   presidio-network:
