@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments (already copied separately)
+.venv/
+venv/
+ENV/
+
+# Git
+.git/
+.gitignore
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+README.md
+docs/
+*.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (if they're downloaded at runtime)
+models/
+*.bin
+*.onnx
+*.pt
+*.pth
+*.h5
+*.pkl
+
+# Large data files
+data/
+*.csv
+*.json
+*.parquet
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+
+
+# Development tools
+.ruff_cache/
+.mypy_cache/
+.pre-commit-config.yaml
