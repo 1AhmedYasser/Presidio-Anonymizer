@@ -118,7 +118,7 @@ class EstBERTRecognizerONNX(EntityRecognizer):
             if not isinstance(ner_results, list):
                 logger.warning(f"Unexpected NER output format: {ner_results}")
                 return results
-            
+
             for entity in ner_results:
                 entity_type = (
                     entity.get("entity_group", entity.get("entity", ""))
