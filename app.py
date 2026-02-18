@@ -3,7 +3,7 @@ import yaml
 import logging
 
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from flask_restx import Resource, Api, fields
 
@@ -374,12 +374,12 @@ Entity-specific operators override DEFAULT.""",
         """Setup Flask error handlers"""
 
         @self.app.errorhandler(HTTPException)
-        def handle_http_exception(error: HTTPException) -> tuple[dict, int]:
+        def handle_http_exception(error: HTTPException) -> tuple[Response, int]:
             logger.error(f"HTTP error: {error}")
-            return jsonify(error=str(error)), error.code
+            return jsonify(error=str(error)), error.code or 500
 
         @self.app.errorhandler(Exception)
-        def handle_generic_exception(error: Exception) -> tuple[dict, int]:
+        def handle_generic_exception(error: Exception) -> tuple[Response, int]:
             logger.error(f"Unexpected error: {error}")
             return jsonify(error="Internal server error"), 500
 
@@ -393,7 +393,7 @@ Entity-specific operators override DEFAULT.""",
 
         # Test route to verify Flask is working
         @self.app.route("/test")
-        def test_route() -> tuple[dict, int]:
+        def test_route() -> tuple[Response, int]:
             return jsonify({"status": "test route works"}), 200
 
         # Health Check Route
@@ -644,7 +644,7 @@ Endpoint tagastab `results` massiivi, kus iga element vastab ühele sisendteksti
                         # Anonymize the text
                         anonymized_result = server_instance.anonymizer.anonymize(
                             text=text,
-                            analyzer_results=analyzer_results,
+                            analyzer_results=analyzer_results,  # type: ignore
                             operators=operators,
                         )
 
@@ -673,6 +673,7 @@ Endpoint tagastab `results` massiivi, kus iga element vastab ühele sisendteksti
                     error_msg = f"Anonymization failed: {str(e)}"
                     logger.error(error_msg)
                     server_instance.api.abort(500, error_msg)
+                    raise
 
         # Recognizers Route
         @self.api.route("/recognizers")
@@ -728,6 +729,7 @@ Recognizers are the detection engines that identify different types of PII:
                     error_msg = f"Failed to get recognizers: {str(e)}"
                     logger.error(error_msg)
                     server_instance.api.abort(500, error_msg)
+                    raise
 
         # Supported Entities Route
         @self.api.route("/supportedentities")
@@ -805,6 +807,7 @@ Returns all supported PII entity types including:
                     error_msg = f"Failed to get supported entities: {str(e)}"
                     logger.error(error_msg)
                     server_instance.api.abort(500, error_msg)
+                    raise
 
         # Configuration Route
         @self.api.route("/config")
@@ -878,6 +881,7 @@ Returns the active configuration including:
                     error_msg = f"Failed to get configuration: {str(e)}"
                     logger.error(error_msg)
                     server_instance.api.abort(500, error_msg)
+                    raise
 
         logger.info("All routes setup complete")
 

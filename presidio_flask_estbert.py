@@ -61,7 +61,7 @@ class EstBERTRecognizerONNX(EntityRecognizer):
                 self.model.model, "get_session_options"
             ):
                 try:
-                    session_options = self.model.model.get_session_options()
+                    session_options = self.model.model.get_session_options()  # type: ignore
                     session_options.inter_op_num_threads = inter_threads
                     session_options.intra_op_num_threads = intra_threads
                     logger.info(
@@ -75,7 +75,7 @@ class EstBERTRecognizerONNX(EntityRecognizer):
             # Create pipeline with ONNX model
             self.nlp_pipeline = pipeline(
                 "ner",
-                model=self.model,
+                model=self.model,  # type: ignore
                 tokenizer=self.tokenizer,
                 aggregation_strategy="simple",
                 device=-1,  # CPU
@@ -104,7 +104,7 @@ class EstBERTRecognizerONNX(EntityRecognizer):
         pass
 
     def analyze(
-        self, text: str, entities: List[str], nlp_artifacts: NlpArtifacts = None
+        self, text: str, entities: List[str], nlp_artifacts: NlpArtifacts | None = None
     ) -> List[RecognizerResult]:
         """Analyze text using EstBERT ONNX model"""
         results = []
@@ -115,7 +115,10 @@ class EstBERTRecognizerONNX(EntityRecognizer):
         try:
             # ONNX inference - releases GIL, allows true parallel execution
             ner_results = self.nlp_pipeline(text)
-
+            if not isinstance(ner_results, list):
+                logger.warning(f"Unexpected NER output format: {ner_results}")
+                return results
+            
             for entity in ner_results:
                 entity_type = (
                     entity.get("entity_group", entity.get("entity", ""))
@@ -163,7 +166,7 @@ class DenylistRecognizer(EntityRecognizer):
         pass
 
     def analyze(
-        self, text: str, entities: List[str], nlp_artifacts: NlpArtifacts = None
+        self, text: str, entities: List[str], nlp_artifacts: NlpArtifacts | None = None
     ) -> List[RecognizerResult]:
         """Find denylist words in text"""
         results = []
