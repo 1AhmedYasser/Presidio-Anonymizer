@@ -225,7 +225,7 @@ class EstonianPresidioFlaskServer:
                 "key": fields.String(
                     required=True,
                     description="Encryption key (16, 24, or 32 characters for 128, 192, or 256-bit encryption)",
-                    example="WmZq4t7w!z%C&F)J",
+                    example="<YOUR-KEY-HERE>",
                 ),
             },
         )
